@@ -5,14 +5,14 @@
  *	@author Nathan Glasl <nathan@silverstripe.com.au>
  */
 
-class PageChildrenExtension extends DataExtension {
+class PageChildrenExtension extends DataExtension
+{
 
-	/**
-	 *	Restrict page children so media pages can't be assigned incorrectly.
-	 */
+    /**
+     *	Restrict page children so media pages can't be assigned incorrectly.
+     */
 
-	private static $allowed_children = array(
-		'Page'
-	);
-
+    private static $allowed_children = array(
+        'Page'
+    );
 }

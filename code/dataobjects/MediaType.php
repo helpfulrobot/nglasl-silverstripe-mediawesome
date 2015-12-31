@@ -5,188 +5,187 @@
  *	@author Nathan Glasl <nathan@silverstripe.com.au>
  */
 
-class MediaType extends DataObject {
+class MediaType extends DataObject
+{
 
-	private static $db = array(
-		'Title' => 'Varchar(255)'
-	);
+    private static $db = array(
+        'Title' => 'Varchar(255)'
+    );
 
-	private static $default_sort = 'Title';
+    private static $default_sort = 'Title';
 
-	/**
-	 *	The default media types.
-	 */
+    /**
+     *	The default media types.
+     */
 
-	private static $page_defaults = array(
-		'Blog',
-		'Event',
-		'News',
-		'Publication'
-	);
+    private static $page_defaults = array(
+        'Blog',
+        'Event',
+        'News',
+        'Publication'
+    );
 
-	/**
-	 *	The custom default media types.
-	 */
+    /**
+     *	The custom default media types.
+     */
 
-	private static $custom_defaults = array(
-	);
+    private static $custom_defaults = array(
+    );
 
-	/**
-	 *	Apply a custom default media type with no respective attributes.
-	 *	NOTE: Refer to the module configuration example.
-	 *
-	 *	@parameter <{MEDIA_TYPE}> string
-	 */
+    /**
+     *	Apply a custom default media type with no respective attributes.
+     *	NOTE: Refer to the module configuration example.
+     *
+     *	@parameter <{MEDIA_TYPE}> string
+     */
 
-	public static function add_default($type) {
+    public static function add_default($type)
+    {
+        self::$custom_defaults[] = $type;
+    }
 
-		self::$custom_defaults[] = $type;
-	}
+    /**
+     *	The process to automatically create any default media types, executed on project build.
+     */
 
-	/**
-	 *	The process to automatically create any default media types, executed on project build.
-	 */
+    public function requireDefaultRecords()
+    {
+        parent::requireDefaultRecords();
 
-	public function requireDefaultRecords() {
+        // Merge the default and custom default media types.
 
-		parent::requireDefaultRecords();
+        $defaults = array_unique(array_merge(self::$page_defaults, self::$custom_defaults));
+        foreach ($defaults as $default) {
 
-		// Merge the default and custom default media types.
+            // Confirm that this media type doesn't already exist before creating it.
 
-		$defaults = array_unique(array_merge(self::$page_defaults, self::$custom_defaults));
-		foreach($defaults as $default) {
+            if (!MediaType::get_one('MediaType', "Title = '" . Convert::raw2sql($default) . "'")) {
+                $type = MediaType::create();
+                $type->Title = $default;
+                $type->write();
+                DB::alteration_message("{$default} Media Type", 'created');
+            }
+        }
+    }
 
-			// Confirm that this media type doesn't already exist before creating it.
+    /**
+     *	Allow access for CMS users viewing media types.
+     */
 
-			if(!MediaType::get_one('MediaType', "Title = '" . Convert::raw2sql($default) . "'")) {
-				$type = MediaType::create();
-				$type->Title = $default;
-				$type->write();
-				DB::alteration_message("{$default} Media Type", 'created');
-			}
-		}
-	}
+    public function canView($member = null)
+    {
+        return true;
+    }
 
-	/**
-	 *	Allow access for CMS users viewing media types.
-	 */
+    /**
+     *	Allow access for CMS users editing media types.
+     */
 
-	public function canView($member = null) {
+    public function canEdit($member = null)
+    {
+        return true;
+    }
 
-		return true;
-	}
+    /**
+     *	Determine access for the current CMS user creating media types.
+     */
 
-	/**
-	 *	Allow access for CMS users editing media types.
-	 */
+    public function canCreate($member = null)
+    {
+        return $this->checkPermissions($member);
+    }
 
-	public function canEdit($member = null) {
+    /**
+     *	Restrict access for CMS users deleting media types.
+     */
 
-		return true;
-	}
+    public function canDelete($member = null)
+    {
+        return false;
+    }
 
-	/**
-	 *	Determine access for the current CMS user creating media types.
-	 */
+    /**
+     *	Determine access for the current CMS user from the site configuration permissions.
+     *
+     *	@parameter <{CURRENT_MEMBER}> member
+     *	@return boolean
+     */
 
-	public function canCreate($member = null) {
+    public function checkPermissions($member = null)
+    {
 
-		return $this->checkPermissions($member);
-	}
+        // Retrieve the current site configuration permissions for customisation of media.
 
-	/**
-	 *	Restrict access for CMS users deleting media types.
-	 */
+        $configuration = SiteConfig::current_site_config();
+        return Permission::check($configuration->MediaPermission, 'any', $member);
+    }
 
-	public function canDelete($member = null) {
+    /**
+     *	Display the respective CMS media type attributes.
+     */
 
-		return false;
-	}
+    public function getCMSFields()
+    {
+        $fields = parent::getCMSFields();
+        if ($this->Title) {
 
-	/**
-	 *	Determine access for the current CMS user from the site configuration permissions.
-	 *
-	 *	@parameter <{CURRENT_MEMBER}> member
-	 *	@return boolean
-	 */
+            // Display the title as read only.
 
-	public function checkPermissions($member = null) {
+            $fields->replaceField('Title', ReadonlyField::create(
+                'Title'
+            ));
+            $fields->addFieldToTab('Root.Main', LiteralField::create(
+                'MediaAttributesTitle',
+                "<div class='field'><label class='left'>Custom Attributes</label></div>"
+            ));
 
-		// Retrieve the current site configuration permissions for customisation of media.
+            // Allow customisation of media type attributes if a respective media page exists, depending on the current CMS user permissions.
 
-		$configuration = SiteConfig::current_site_config();
-		return Permission::check($configuration->MediaPermission, 'any', $member);
-	}
+            if (MediaPage::get()->innerJoin('MediaType', 'MediaPage.MediaTypeID = MediaType.ID')->where("MediaType.Title = '" . Convert::raw2sql($this->Title) . "'")->exists()) {
+                $configuration = ($this->checkPermissions() === false) ? GridFieldConfig_RecordViewer::create() : GridFieldConfig_RecordEditor::create()->removeComponentsByType('GridFieldDeleteAction');
+                $fields->addFieldToTab('Root.Main', GridField::create(
+                    'MediaAttributes',
+                    'Custom Attributes',
+                    MediaAttribute::get()->innerJoin('MediaPage', 'MediaAttribute.MediaPageID = MediaPage.ID')->innerJoin('MediaType', 'MediaPage.MediaTypeID = MediaType.ID')->where("MediaType.Title = '" . Convert::raw2sql($this->Title) . "' AND MediaAttribute.LinkID = -1"),
+                    $configuration
+                )->setModelClass('MediaAttribute'));
+            } else {
 
-	/**
-	 *	Display the respective CMS media type attributes.
-	 */
+                // Display a notice that respective media pages should first be created.
 
-	public function getCMSFields() {
+                Requirements::css(MEDIAWESOME_PATH . '/css/mediawesome.css');
+                $fields->addFieldToTab('Root.Main', LiteralField::create(
+                    'MediaNotice',
+                    "<p class='mediawesome notice'><strong>No {$this->Title} Pages Found</strong></p>"
+                ));
+            }
+        }
 
-		$fields = parent::getCMSFields();
-		if($this->Title) {
+        // Allow extension customisation.
 
-			// Display the title as read only.
+        $this->extend('updateMediaTypeCMSFields', $fields);
+        return $fields;
+    }
 
-			$fields->replaceField('Title', ReadonlyField::create(
-				'Title'
-			));
-			$fields->addFieldToTab('Root.Main', LiteralField::create(
-				'MediaAttributesTitle',
-				"<div class='field'><label class='left'>Custom Attributes</label></div>"
-			));
+    /**
+     *	Confirm that the current type is valid.
+     */
 
-			// Allow customisation of media type attributes if a respective media page exists, depending on the current CMS user permissions.
+    public function validate()
+    {
+        $result = parent::validate();
 
-			if(MediaPage::get()->innerJoin('MediaType', 'MediaPage.MediaTypeID = MediaType.ID')->where("MediaType.Title = '" . Convert::raw2sql($this->Title) . "'")->exists()) {
-				$configuration = ($this->checkPermissions() === false) ? GridFieldConfig_RecordViewer::create() : GridFieldConfig_RecordEditor::create()->removeComponentsByType('GridFieldDeleteAction');
-				$fields->addFieldToTab('Root.Main', GridField::create(
-					'MediaAttributes',
-					'Custom Attributes',
-					MediaAttribute::get()->innerJoin('MediaPage', 'MediaAttribute.MediaPageID = MediaPage.ID')->innerJoin('MediaType', 'MediaPage.MediaTypeID = MediaType.ID')->where("MediaType.Title = '" . Convert::raw2sql($this->Title) . "' AND MediaAttribute.LinkID = -1"),
-					$configuration
-				)->setModelClass('MediaAttribute'));
-			}
-			else {
+        // Confirm that the current type has been given a title and doesn't already exist.
 
-				// Display a notice that respective media pages should first be created.
+        if ($result->valid() && !$this->Title) {
+            $result->error('"Title" required!');
+        } elseif ($result->valid() && MediaType::get_one('MediaType', "ID != " . (int)$this->ID . " AND Title = '" . Convert::raw2sql($this->Title) . "'")) {
+            $result->error('Type already exists!');
+        }
 
-				Requirements::css(MEDIAWESOME_PATH . '/css/mediawesome.css');
-				$fields->addFieldToTab('Root.Main', LiteralField::create(
-					'MediaNotice',
-					"<p class='mediawesome notice'><strong>No {$this->Title} Pages Found</strong></p>"
-				));
-			}
-		}
+        // Allow extension customisation.
 
-		// Allow extension customisation.
-
-		$this->extend('updateMediaTypeCMSFields', $fields);
-		return $fields;
-	}
-
-	/**
-	 *	Confirm that the current type is valid.
-	 */
-
-	public function validate() {
-
-		$result = parent::validate();
-
-		// Confirm that the current type has been given a title and doesn't already exist.
-
-		if($result->valid() && !$this->Title) {
-			$result->error('"Title" required!');
-		}
-		else if($result->valid() && MediaType::get_one('MediaType', "ID != " . (int)$this->ID . " AND Title = '" . Convert::raw2sql($this->Title) . "'")) {
-			$result->error('Type already exists!');
-		}
-
-		// Allow extension customisation.
-
-		$this->extend('validateMediaType', $result);
-		return $result;
-	}
-
+        $this->extend('validateMediaType', $result);
+        return $result;
+    }
 }

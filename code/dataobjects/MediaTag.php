@@ -5,72 +5,71 @@
  *	@author Nathan Glasl <nathan@silverstripe.com.au>
  */
 
-class MediaTag extends DataObject {
+class MediaTag extends DataObject
+{
 
-	private static $db = array(
-		'Title' => 'Varchar(255)'
-	);
+    private static $db = array(
+        'Title' => 'Varchar(255)'
+    );
 
-	private static $default_sort = 'Title';
+    private static $default_sort = 'Title';
 
-	/**
-	 *	Allow access for CMS users viewing tags.
-	 */
+    /**
+     *	Allow access for CMS users viewing tags.
+     */
 
-	public function canView($member = null) {
+    public function canView($member = null)
+    {
+        return true;
+    }
 
-		return true;
-	}
+    /**
+     *	Allow access for CMS users editing tags.
+     */
 
-	/**
-	 *	Allow access for CMS users editing tags.
-	 */
+    public function canEdit($member = null)
+    {
+        return true;
+    }
 
-	public function canEdit($member = null) {
+    /**
+     *	Allow access for CMS users creating tags.
+     */
 
-		return true;
-	}
+    public function canCreate($member = null)
+    {
+        return true;
+    }
 
-	/**
-	 *	Allow access for CMS users creating tags.
-	 */
+    /**
+     *	Restrict access for CMS users deleting tags.
+     */
 
-	public function canCreate($member = null) {
+    public function canDelete($member = null)
+    {
+        return false;
+    }
 
-		return true;
-	}
+    /**
+     *	Confirm that the current tag is valid.
+     */
 
-	/**
-	 *	Restrict access for CMS users deleting tags.
-	 */
+    public function validate()
+    {
+        $result = parent::validate();
 
-	public function canDelete($member = null) {
+        // Confirm that the current tag has been given a title and doesn't already exist.
 
-		return false;
-	}
+        $this->Title = strtolower($this->Title);
+        if ($result->valid() && !$this->Title) {
+            $result->error('"Title" required!');
+        } elseif ($result->valid() && MediaTag::get_one('MediaTag', "ID != " . (int)$this->ID . " AND Title = '" . Convert::raw2sql($this->Title) . "'")) {
+            $result->error('Tag already exists!');
+        }
 
-	/**
-	 *	Confirm that the current tag is valid.
-	 */
+        // Allow extension customisation.
 
-	public function validate() {
-
-		$result = parent::validate();
-
-		// Confirm that the current tag has been given a title and doesn't already exist.
-
-		$this->Title = strtolower($this->Title);
-		if($result->valid() && !$this->Title) {
-			$result->error('"Title" required!');
-		}
-		else if($result->valid() && MediaTag::get_one('MediaTag', "ID != " . (int)$this->ID . " AND Title = '" . Convert::raw2sql($this->Title) . "'")) {
-			$result->error('Tag already exists!');
-		}
-
-		// Allow extension customisation.
-
-		$this->extend('validateMediaTag', $result);
-		return $result;
-	}
-
+        $this->extend('validateMediaTag', $result);
+        return $result;
+    }
 }
